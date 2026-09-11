@@ -652,34 +652,36 @@ void SettingsWindow::openMonitorOverrideCreateDialog(std::string barName) {
 
       // Wrap in a start-aligned row so the segmented shrinks to its content instead of stretching to
       // the sheet width, which would trail its surface background past the last segment.
-      body.addChild(ui::row(
-          {
-              .align = FlexAlign::Center,
-          },
-          ui::segmented({
-              .options = std::move(segmentOptions),
-              .selectedIndex = customSelected ? outputs.size() : selectedOutput,
-              .fontSize = Style::fontSizeBody * scale,
-              .scale = scale,
-              .onChange =
-                  [this, outputs, matchState](std::size_t index) {
-                    // Connector segment: commit its name. "Custom" (trailing): clear so the free-text
-                    // input takes over. Rebuild re-derives the selection and input visibility.
-                    if (index < outputs.size()) {
-                      *matchState = outputs[index].value;
-                    } else {
-                      matchState->clear();
-                    }
-                    if (m_editorSheetModal != nullptr) {
-                      m_editorSheetModal->clearStatusMessage();
-                      m_editorSheetModal->rebuildBody();
-                    }
-                  },
-              // Break onto the next line when the outputs overflow the dialog width, so many-monitor
-              // setups stay readable instead of shrinking the segments.
-              .configure = [](Segmented& segmented) { segmented.setWrap(true); },
-          })
-      ));
+      body.addChild(
+          ui::row(
+              {
+                  .align = FlexAlign::Center,
+              },
+              ui::segmented({
+                  .options = std::move(segmentOptions),
+                  .selectedIndex = customSelected ? outputs.size() : selectedOutput,
+                  .fontSize = Style::fontSizeBody * scale,
+                  .scale = scale,
+                  .onChange =
+                      [this, outputs, matchState](std::size_t index) {
+                        // Connector segment: commit its name. "Custom" (trailing): clear so the free-text
+                        // input takes over. Rebuild re-derives the selection and input visibility.
+                        if (index < outputs.size()) {
+                          *matchState = outputs[index].value;
+                        } else {
+                          matchState->clear();
+                        }
+                        if (m_editorSheetModal != nullptr) {
+                          m_editorSheetModal->clearStatusMessage();
+                          m_editorSheetModal->rebuildBody();
+                        }
+                      },
+                  // Break onto the next line when the outputs overflow the dialog width, so many-monitor
+                  // setups stay readable instead of shrinking the segments.
+                  .configure = [](Segmented& segmented) { segmented.setWrap(true); },
+              })
+          )
+      );
     }
 
     body.addChild(std::move(input));
@@ -687,16 +689,32 @@ void SettingsWindow::openMonitorOverrideCreateDialog(std::string barName) {
         ui::row(
             {
                 .align = FlexAlign::Center,
+                .justify = FlexJustify::End,
                 .gap = Style::spaceSm * scale,
             },
             ui::button({
-                .text = i18n::tr("settings.entities.monitor-override.create"),
+                .text = i18n::tr("common.actions.cancel"),
                 .fontSize = Style::fontSizeBody * scale,
-                .variant = ButtonVariant::Default,
+                .variant = ButtonVariant::Ghost,
                 .minHeight = Style::controlHeight * scale,
                 .paddingV = Style::spaceXs * scale,
                 .paddingH = Style::spaceMd * scale,
-                .radius = Style::scaledRadiusSm(scale),
+                .radius = Style::scaledRadiusMd(scale),
+                .onClick =
+                    [this]() {
+                      if (m_editorSheetModal != nullptr) {
+                        m_editorSheetModal->close();
+                      }
+                    },
+            }),
+            ui::button({
+                .text = i18n::tr("settings.entities.monitor-override.create"),
+                .fontSize = Style::fontSizeBody * scale,
+                .variant = ButtonVariant::Primary,
+                .minHeight = Style::controlHeight * scale,
+                .paddingV = Style::spaceXs * scale,
+                .paddingH = Style::spaceMd * scale,
+                .radius = Style::scaledRadiusMd(scale),
                 .onClick = doCreate,
             })
         )
