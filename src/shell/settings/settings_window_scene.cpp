@@ -1405,8 +1405,8 @@ std::unique_ptr<Flex> SettingsWindow::buildBody(
 ) {
   const auto requestRebuild = [this]() { requestSceneRebuild(); };
   const auto createBar = [this](std::string name) { this->createBar(std::move(name)); };
-  const auto createMonitorOverride = [this](std::string barName, std::string match) {
-    this->createMonitorOverride(std::move(barName), std::move(match));
+  const auto openMonitorOverrideCreate = [this](std::string barName) {
+    openMonitorOverrideCreateDialog(std::move(barName));
   };
   const auto clearTransientSettingsState = [this]() { this->clearTransientSettingsState(); };
   const auto clearSearchQuery = [this]() { m_searchQuery.clear(); };
@@ -1416,13 +1416,11 @@ std::unique_ptr<Flex> SettingsWindow::buildBody(
       .gap = Style::spaceMd * scale,
   });
 
-  const auto sidebarAvailableOutputs = availableOutputs();
   auto sidebar = settings::buildSettingsSidebar(
       settings::SettingsSidebarContext{
           .config = cfg,
           .sections = sections,
           .availableBars = availableBars,
-          .availableOutputs = sidebarAvailableOutputs,
           .scale = scale,
           .globalSearchActive = !m_searchQuery.empty(),
           .sidebarScrollState = m_sidebarScrollState,
@@ -1431,13 +1429,11 @@ std::unique_ptr<Flex> SettingsWindow::buildBody(
           .selectedBarName = m_selectedBarName,
           .selectedMonitorOverride = m_selectedMonitorOverride,
           .creatingBarName = m_creatingBarName,
-          .creatingMonitorOverrideBarName = m_creatingMonitorOverrideBarName,
-          .creatingMonitorOverrideMatch = m_creatingMonitorOverrideMatch,
           .clearTransientState = clearTransientSettingsState,
           .clearSearchQuery = clearSearchQuery,
           .requestRebuild = requestRebuild,
           .createBar = createBar,
-          .createMonitorOverride = createMonitorOverride,
+          .openMonitorOverrideCreate = openMonitorOverrideCreate,
           .scrollSidebarNodeIntoView = [this](const Node* node) { scrollSidebarNodeIntoView(node); },
           .outNav = &m_sidebarNav,
       }

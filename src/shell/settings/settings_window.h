@@ -187,6 +187,7 @@ private:
   void openBarWidgetAddPopup(const std::vector<std::string>& lanePath);
   // Request is taken by value because opening the popup can close the sheet that owns the forwarding control.
   void openSearchPickerPopup(settings::SearchPickerOpenRequest request);
+  void openMonitorOverrideCreateDialog(std::string barName);
   void openSessionActionEntryEditor(std::size_t index);
   void syncSessionActionInlineSummary(std::size_t index, const SessionPanelActionConfig& row);
   void openIdleBehaviorEntryEditor(std::size_t index);
@@ -335,8 +336,6 @@ private:
   std::string m_creatingBarName;
   std::string m_renamingBarName;
   std::string m_pendingDeleteBarName;
-  std::string m_creatingMonitorOverrideBarName;
-  std::string m_creatingMonitorOverrideMatch;
   std::string m_renamingMonitorOverrideBarName;
   std::string m_renamingMonitorOverrideMatch;
   std::string m_pendingDeleteMonitorOverrideBarName;
