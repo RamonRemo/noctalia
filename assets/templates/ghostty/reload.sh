@@ -38,7 +38,11 @@ fi
 # Instances launched with gtk-single-instance=false own no D-Bus name, so
 # reload their independent processes separately. Excluding the primary keeps
 # its startup-safe reload path intact.
-for pid in $(pgrep -x ghostty 2>/dev/null || true); do
+#
+# comm is truncated to 15 chars and becomes ".ghostty-wrapped" under wrappers
+# (nixpkgs), so match args with -f instead of "pgrep -x ghostty".
+for pid in $(pgrep -f '\.ghostty-wrapped|(^|/)ghostty( |$)' 2>/dev/null || true); do
+    [ "$pid" = "$$" ] && continue
     [ "$pid" = "$primary_pid" ] && continue
     kill -SIGUSR2 "$pid" 2>/dev/null || true
 done
