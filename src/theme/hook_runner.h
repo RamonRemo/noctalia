@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -16,8 +18,12 @@ namespace noctalia::theme {
   class HookRunner {
   public:
     static constexpr std::size_t kDefaultMaxConcurrent = 4;
+    static constexpr std::chrono::milliseconds kDefaultShutdownGrace{5000};
 
-    explicit HookRunner(std::size_t maxConcurrent = kDefaultMaxConcurrent);
+    explicit HookRunner(
+        std::size_t maxConcurrent = kDefaultMaxConcurrent,
+        std::chrono::milliseconds shutdownGrace = kDefaultShutdownGrace
+    );
     ~HookRunner();
 
     HookRunner(const HookRunner&) = delete;
@@ -50,6 +56,11 @@ namespace noctalia::theme {
       std::size_t maxConcurrent = kDefaultMaxConcurrent;
       std::uint64_t currentGeneration = 0;
       bool shutdown = false;
+      // Grace before a still-running hook is force-terminated at destruction.
+      std::chrono::milliseconds shutdownGrace = kDefaultShutdownGrace;
+      // Terminates the process group of every running hook once set (checked by
+      // process::runAsync's poll loop). Shared so detached hook threads see it.
+      std::shared_ptr<std::atomic<bool>> cancel = std::make_shared<std::atomic<bool>>(false);
     };
 
     static void pump(const std::shared_ptr<State>& state);

@@ -4,6 +4,8 @@
 #include "core/toml.h" // IWYU pragma: keep
 #include "theme/palette.h"
 
+#include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <functional>
@@ -90,6 +92,10 @@ namespace noctalia::theme {
     // A palette change has been reported to apply() and not yet passed on to the handler.
     mutable bool m_paletteChangedOwed = false;
     mutable std::unique_ptr<HookRunner> m_hookRunner;
+    // Terminates an in-flight synchronous hook once the shutdown grace elapses, so
+    // ~TemplateApplyService's worker join cannot hang on a never-exiting hook.
+    std::shared_ptr<std::atomic<bool>> m_hookCancel = std::make_shared<std::atomic<bool>>(false);
+    static constexpr std::chrono::milliseconds kHookShutdownGrace{5000};
   };
 
 } // namespace noctalia::theme

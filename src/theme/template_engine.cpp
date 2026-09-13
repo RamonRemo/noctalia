@@ -21,15 +21,19 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <optional>
 #include <ranges>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
+#include <thread>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -1662,7 +1666,33 @@ namespace noctalia::theme {
         if (async && renderOptions.hookRunner != nullptr) {
           renderOptions.hookRunner->enqueue(hookRendered.text, renderOptions.generation);
         } else {
-          [[maybe_unused]] const bool hookOk = process::runSync(hookRendered.text);
+          // Interruptible run. A started hook is deliberately allowed to finish (a
+          // supersede waits it out; killing mid-write could corrupt an app's config).
+          // Only the hard shutdown flag terminates it, and only after the caller's
+          // grace period, so a never-exiting hook cannot wedge teardown. A watcher
+          // bridges that flag (and an optional timeout backstop) to the process-level
+          // cancel that kills the hook's process group.
+          process::RunOptions opts;
+          opts.timeout = renderOptions.hookTimeout;
+          opts.cancel = std::make_shared<std::atomic<bool>>(false);
+          std::atomic<bool> hookDone{false};
+          std::thread watcher;
+          if (renderOptions.hookCancel) {
+            watcher = std::thread([&]() {
+              while (!hookDone.load(std::memory_order_relaxed)) {
+                if (renderOptions.hookCancel->load()) {
+                  opts.cancel->store(true);
+                  return;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+              }
+            });
+          }
+          [[maybe_unused]] const bool hookOk = process::runSync(hookRendered.text, opts);
+          hookDone.store(true, std::memory_order_relaxed);
+          if (watcher.joinable()) {
+            watcher.join();
+          }
         }
       };
 

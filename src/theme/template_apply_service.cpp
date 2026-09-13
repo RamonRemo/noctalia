@@ -14,11 +14,13 @@
 #include "util/string_utils.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <iterator>
 #include <set>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -176,9 +178,30 @@ namespace noctalia::theme {
     // The worker may be draining hooks; drop the backlog so shutdown waits only for
     // the hooks already running.
     m_hookRunner->requestShutdown();
+    // A synchronous inline hook can be blocking the worker inside runSync. Give it a
+    // grace period, then cancel it so join() cannot hang on a never-exiting hook.
+    // The grace thread wakes early once the worker exits, and captures the cancel flag
+    // by shared_ptr so a late fire is harmless.
+    std::atomic<bool> workerDone{false};
+    std::thread graceThread([cancel = m_hookCancel, &workerDone]() {
+      const auto deadline = std::chrono::steady_clock::now() + kHookShutdownGrace;
+      while (!workerDone.load(std::memory_order_relaxed)) {
+        if (std::chrono::steady_clock::now() >= deadline) {
+          kLog.warn(
+              "a template hook is still running after {}s; terminating it",
+              std::chrono::duration_cast<std::chrono::duration<double>>(kHookShutdownGrace).count()
+          );
+          cancel->store(true, std::memory_order_relaxed);
+          return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      }
+    });
     if (m_worker.joinable()) {
       m_worker.join();
     }
+    workerDone.store(true, std::memory_order_relaxed);
+    graceThread.join();
   }
 
   void TemplateApplyService::setAfterApplyCallback(
@@ -300,6 +323,7 @@ namespace noctalia::theme {
     options.configTable = request.configTable;
     options.hookRunner = &hookRunner;
     options.generation = request.generation;
+    options.hookCancel = m_hookCancel;
 
     TemplateEngine engine(TemplateEngine::makeThemeData(request.palette), options);
 
