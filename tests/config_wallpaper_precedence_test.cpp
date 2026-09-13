@@ -1,4 +1,6 @@
 #include "config/config_service.h"
+#include "config/config_types.h"
+#include "shell/wallpaper/wallpaper_paths.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -91,11 +93,44 @@ namespace {
     std::filesystem::remove_all(root);
   }
 
+  // An unset wallpaper.directory should default to the Wallpapers subdirectory,
+  // not the whole Pictures tree. Regression guard for issue #4366.
+  void checkDefaultDirectoryIsWallpapersSubdir() {
+    const std::filesystem::path root =
+        std::filesystem::temp_directory_path() / ("noctalia-wallpaper-default-" + std::to_string(::getpid()));
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "config" / "noctalia");
+    std::filesystem::create_directories(root / "state" / "noctalia");
+    std::filesystem::create_directories(root / "data");
+    ::setenv("NOCTALIA_CONFIG_HOME", (root / "config").c_str(), 1);
+    ::setenv("NOCTALIA_STATE_HOME", (root / "state").c_str(), 1);
+    ::setenv("NOCTALIA_DATA_HOME", (root / "data").c_str(), 1);
+
+    {
+      std::ofstream out(root / "config" / "noctalia" / "config.toml", std::ios::trunc);
+      out << "[wallpaper]\nenabled = true\n";
+    }
+
+    ConfigService config;
+    const std::string resolved = wallpaper::resolveGlobalWallpaperDirectory(config.config().wallpaper, ThemeMode::Dark);
+    const std::filesystem::path resolvedPath(resolved);
+    expect(
+        resolvedPath.filename() == "Wallpapers",
+        "unset wallpaper.directory did not default to a Wallpapers subdirectory"
+    );
+
+    ::unsetenv("NOCTALIA_CONFIG_HOME");
+    ::unsetenv("NOCTALIA_STATE_HOME");
+    ::unsetenv("NOCTALIA_DATA_HOME");
+    std::filesystem::remove_all(root);
+  }
+
 } // namespace
 
 int main() {
   checkConfigSurvivesFirstSidecarWrite();
   checkSidecarPathOutranksConfigFilePath();
+  checkDefaultDirectoryIsWallpapersSubdir();
 
   if (g_failures == 0) {
     std::println("config_wallpaper_precedence_test: all checks passed");
