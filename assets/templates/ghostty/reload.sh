@@ -40,8 +40,11 @@ fi
 # its startup-safe reload path intact.
 #
 # comm is truncated to 15 chars and becomes ".ghostty-wrapped" under wrappers
-# (nixpkgs), so match args with -f instead of "pgrep -x ghostty".
-for pid in $(pgrep -f '\.ghostty-wrapped|(^|/)ghostty( |$)' 2>/dev/null || true); do
+# (nixpkgs), so match args with -f. Anchoring to argv[0] keeps a stray
+# "/ghostty" file argument in another process (e.g. an editor) from receiving
+# SIGUSR2. This does not match launcher-prefixed exec lines (env/uwsm/
+# systemd-run); those are covered by the systemd and D-Bus paths above.
+for pid in $(pgrep -f '^([^ ]*/)?\.?ghostty(-wrapped)?( |$)' 2>/dev/null || true); do
     [ "$pid" = "$$" ] && continue
     [ "$pid" = "$primary_pid" ] && continue
     kill -SIGUSR2 "$pid" 2>/dev/null || true
