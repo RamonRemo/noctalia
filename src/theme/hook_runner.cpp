@@ -13,10 +13,16 @@ namespace noctalia::theme {
     constexpr std::size_t kMaxHookOutputBytes = 8 * 1024;
   } // namespace
 
-  HookRunner::HookRunner(std::size_t maxConcurrent, std::chrono::milliseconds shutdownGrace)
+  HookRunner::HookRunner(
+      std::size_t maxConcurrent, std::chrono::milliseconds shutdownGrace,
+      std::shared_ptr<std::atomic<bool>> shutdownCancel
+  )
       : m_state(std::make_shared<State>()) {
     m_state->maxConcurrent = maxConcurrent > 0 ? maxConcurrent : kDefaultMaxConcurrent;
     m_state->shutdownGrace = shutdownGrace;
+    if (shutdownCancel) {
+      m_state->cancel = std::move(shutdownCancel);
+    }
   }
 
   HookRunner::~HookRunner() {
@@ -29,11 +35,13 @@ namespace noctalia::theme {
     const bool drained =
         m_state->idleCv.wait_for(lock, m_state->shutdownGrace, [this]() { return m_state->running == 0; });
     if (!drained) {
-      kLog.warn(
-          "a template hook is still running after {}s; terminating it",
-          std::chrono::duration_cast<std::chrono::duration<double>>(m_state->shutdownGrace).count()
-      );
-      m_state->cancel->store(true, std::memory_order_relaxed);
+      // An owner sharing the flag may have raised it already and logged the reason.
+      if (!m_state->cancel->exchange(true)) {
+        kLog.warn(
+            "a template hook is still running after {}s; terminating it",
+            std::chrono::duration_cast<std::chrono::duration<double>>(m_state->shutdownGrace).count()
+        );
+      }
       m_state->idleCv.wait(lock, [this]() { return m_state->running == 0; });
     }
   }

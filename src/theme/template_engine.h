@@ -3,12 +3,10 @@
 #include "core/toml.h" // IWYU pragma: keep
 
 #include <atomic>
-#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -49,10 +47,8 @@ namespace noctalia::theme {
       HookRunner* hookRunner = nullptr;
       std::uint64_t generation = 0;
       // Hard cancel for a synchronous hook: when set true (e.g. at shutdown) an in-flight
-      // inline post_hook has its process group terminated instead of blocking teardown.
+      // inline hook has its process group terminated instead of blocking teardown.
       std::shared_ptr<std::atomic<bool>> hookCancel;
-      // Backstop time limit for a synchronous hook. Unset leaves it unbounded (legacy).
-      std::optional<std::chrono::milliseconds> hookTimeout;
     };
 
     explicit TemplateEngine(ThemeData themeData);

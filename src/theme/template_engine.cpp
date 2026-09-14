@@ -21,19 +21,15 @@
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <cctype>
-#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
-#include <memory>
 #include <optional>
 #include <ranges>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
-#include <thread>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -1627,11 +1623,15 @@ namespace noctalia::theme {
       renderOptions.configDir = configPath.has_parent_path() ? configPath.parent_path().string() : "";
       renderOptions.configFile = configPath.string();
 
+      // Dynamic path commands are user commands too, so the shutdown flag bounds them like hooks.
+      process::RunOptions pathCommandOptions;
+      pathCommandOptions.cancel = renderOptions.hookCancel;
+
       std::string effectiveInput = entry.inputPath;
       if (!entry.inputPathDynamic.empty()) {
         const auto cmdRendered = EngineImpl(m_themeData, renderOptions).render(entry.inputPathDynamic);
         if (cmdRendered.errorCount == 0 && !cmdRendered.text.empty()) {
-          const auto dynResult = process::runSync(cmdRendered.text);
+          const auto dynResult = process::runSync(cmdRendered.text, pathCommandOptions);
           if (dynResult.exitCode == 0) {
             std::vector<std::string> dynamicInputs;
             appendPathsFromDynamicStdout(configPath, dynamicInputs, dynResult.out);
@@ -1646,7 +1646,7 @@ namespace noctalia::theme {
       if (!entry.outputPathDynamic.empty()) {
         const auto cmdRendered = EngineImpl(m_themeData, renderOptions).render(entry.outputPathDynamic);
         if (cmdRendered.errorCount == 0 && !cmdRendered.text.empty()) {
-          const auto dynResult = process::runSync(cmdRendered.text);
+          const auto dynResult = process::runSync(cmdRendered.text, pathCommandOptions);
           if (dynResult.exitCode == 0) {
             appendPathsFromDynamicStdout(configPath, effectiveOutputs, dynResult.out);
           }
@@ -1666,33 +1666,12 @@ namespace noctalia::theme {
         if (async && renderOptions.hookRunner != nullptr) {
           renderOptions.hookRunner->enqueue(hookRendered.text, renderOptions.generation);
         } else {
-          // Interruptible run. A started hook is deliberately allowed to finish (a
-          // supersede waits it out; killing mid-write could corrupt an app's config).
-          // Only the hard shutdown flag terminates it, and only after the caller's
-          // grace period, so a never-exiting hook cannot wedge teardown. A watcher
-          // bridges that flag (and an optional timeout backstop) to the process-level
-          // cancel that kills the hook's process group.
+          // A started hook is allowed to finish (a supersede waits it out; killing
+          // mid-write could corrupt an app's config). Only the shutdown flag, raised
+          // after the caller's grace period, terminates its process group.
           process::RunOptions opts;
-          opts.timeout = renderOptions.hookTimeout;
-          opts.cancel = std::make_shared<std::atomic<bool>>(false);
-          std::atomic<bool> hookDone{false};
-          std::thread watcher;
-          if (renderOptions.hookCancel) {
-            watcher = std::thread([&]() {
-              while (!hookDone.load(std::memory_order_relaxed)) {
-                if (renderOptions.hookCancel->load()) {
-                  opts.cancel->store(true);
-                  return;
-                }
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
-              }
-            });
-          }
+          opts.cancel = renderOptions.hookCancel;
           [[maybe_unused]] const bool hookOk = process::runSync(hookRendered.text, opts);
-          hookDone.store(true, std::memory_order_relaxed);
-          if (watcher.joinable()) {
-            watcher.join();
-          }
         }
       };
 

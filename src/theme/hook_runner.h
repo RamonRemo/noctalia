@@ -20,9 +20,13 @@ namespace noctalia::theme {
     static constexpr std::size_t kDefaultMaxConcurrent = 4;
     static constexpr std::chrono::milliseconds kDefaultShutdownGrace{5000};
 
+    // shutdownCancel lets an owner that already bounds its own shutdown share that budget:
+    // raising it terminates every running hook, and the destructor then only waits for the
+    // reap. Without one the runner uses a private flag and its own grace period.
     explicit HookRunner(
         std::size_t maxConcurrent = kDefaultMaxConcurrent,
-        std::chrono::milliseconds shutdownGrace = kDefaultShutdownGrace
+        std::chrono::milliseconds shutdownGrace = kDefaultShutdownGrace,
+        std::shared_ptr<std::atomic<bool>> shutdownCancel = nullptr
     );
     ~HookRunner();
 
