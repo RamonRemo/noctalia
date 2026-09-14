@@ -584,12 +584,17 @@ void SettingsWindow::openMonitorOverrideCreateDialog(std::string barName) {
 
   // Transient value of the pending match, shared between the segmented picker, the free-text input,
   // and the create action. Held here (not on SettingsWindow) so it lives and dies with this dialog.
+  // Defaults to the first detected output so the common case (pick a connected monitor) is one click;
+  // with no detected outputs it stays empty and the "Custom" free-text field takes over.
   auto matchState = std::make_shared<std::string>();
+  if (!outputs.empty()) {
+    *matchState = outputs.front().value;
+  }
 
   auto populate = [this, scale, outputs, existingMatches, barName, matchState](Flex& body) {
     // Derive the selected segment and whether the free-text input is shown from the current value.
-    // A detected connector match selects its segment and hides the input; anything else (including
-    // the initial empty value) selects the trailing "Custom" segment and shows the input.
+    // A detected connector match selects its segment and hides the input; anything else (an empty or
+    // free-text value) selects the trailing "Custom" segment and shows the input.
     std::size_t selectedOutput = outputs.size();
     for (std::size_t i = 0; i < outputs.size(); ++i) {
       if (outputs[i].value == *matchState) {
@@ -641,47 +646,60 @@ void SettingsWindow::openMonitorOverrideCreateDialog(std::string barName) {
     inputPtr->setOnSubmit([doCreate](const std::string& /*text*/) mutable { doCreate(); });
 
     if (!outputs.empty()) {
-      std::vector<ui::SegmentedOption> segmentOptions;
-      segmentOptions.reserve(outputs.size() + 1);
-      for (const auto& output : outputs) {
-        // Connector name only (e.g. "DP-1"); the fuller "DP-1 (description)" label is kept for the
-        // free-text case and would make the segments too wide.
-        segmentOptions.push_back({.label = output.value, .tooltip = output.label});
-      }
-      segmentOptions.push_back({.label = i18n::tr("settings.entities.monitor-override.custom")});
-
-      // Wrap in a start-aligned row so the segmented shrinks to its content instead of stretching to
-      // the sheet width, which would trail its surface background past the last segment.
+      // Wrapping, fill-width pill row (same idiom as the settings group-jump pills): one pill per
+      // detected output plus a trailing "Custom" pill. A fill-width wrapping row breaks onto the next
+      // line for many-monitor setups; a single Segmented cannot, since it keeps every segment on one
+      // line (its surface background would trail past the last segment when given room to wrap).
+      Flex* pickerRow = nullptr;
       body.addChild(
-          ui::row(
-              {
-                  .align = FlexAlign::Center,
-              },
-              ui::segmented({
-                  .options = std::move(segmentOptions),
-                  .selectedIndex = customSelected ? outputs.size() : selectedOutput,
-                  .fontSize = Style::fontSizeBody * scale,
-                  .scale = scale,
-                  .onChange =
-                      [this, outputs, matchState](std::size_t index) {
-                        // Connector segment: commit its name. "Custom" (trailing): clear so the free-text
-                        // input takes over. Rebuild re-derives the selection and input visibility.
-                        if (index < outputs.size()) {
-                          *matchState = outputs[index].value;
-                        } else {
-                          matchState->clear();
-                        }
-                        if (m_editorSheetModal != nullptr) {
-                          m_editorSheetModal->clearStatusMessage();
-                          m_editorSheetModal->rebuildBody();
-                        }
-                      },
-                  // Break onto the next line when the outputs overflow the dialog width, so many-monitor
-                  // setups stay readable instead of shrinking the segments.
-                  .configure = [](Segmented& segmented) { segmented.setWrap(true); },
-              })
-          )
+          ui::row({
+              .out = &pickerRow,
+              .align = FlexAlign::Center,
+              .wrap = true,
+              .gap = Style::spaceXs * scale,
+              .fillWidth = true,
+          })
       );
+
+      const auto addPill = [&](std::string text, std::string tooltip, bool selected, std::function<void()> onSelect) {
+        pickerRow->addChild(
+            ui::button({
+                .text = std::move(text),
+                .fontSize = Style::fontSizeBody * scale,
+                .variant = selected ? ButtonVariant::Primary : ButtonVariant::Default,
+                .tooltip = tooltip.empty() ? std::nullopt : std::optional<std::string>{std::move(tooltip)},
+                .minHeight = Style::controlHeight * scale,
+                .paddingV = Style::spaceXs * scale,
+                .paddingH = Style::spaceMd * scale,
+                .radius = Style::scaledRadiusMd(scale),
+                .onClick = std::move(onSelect),
+            })
+        );
+      };
+
+      for (std::size_t i = 0; i < outputs.size(); ++i) {
+        // Connector name only on the pill (e.g. "DP-1"); the fuller "DP-1 (description)" label is the
+        // tooltip and would make the pills too wide.
+        addPill(
+            outputs[i].value, outputs[i].label, !customSelected && i == selectedOutput,
+            [this, matchState, value = outputs[i].value]() {
+              *matchState = value;
+              if (m_editorSheetModal != nullptr) {
+                m_editorSheetModal->clearStatusMessage();
+                m_editorSheetModal->rebuildBody();
+              }
+            }
+        );
+      }
+      // Trailing "Custom": clear the match so the free-text input takes over. Rebuild re-derives the
+      // selection and the input's visibility.
+      addPill(i18n::tr("settings.entities.monitor-override.custom"), {}, customSelected, [this, matchState]() {
+        matchState->clear();
+        if (m_editorSheetModal != nullptr) {
+          m_editorSheetModal->clearStatusMessage();
+          m_editorSheetModal->rebuildBody();
+        }
+      });
     }
 
     body.addChild(std::move(input));
@@ -723,7 +741,7 @@ void SettingsWindow::openMonitorOverrideCreateDialog(std::string barName) {
 
   m_editorSheetModal->open(
       settings::SettingsSheetRequest{
-          .sheetTitle = i18n::tr("settings.entities.monitor-override.new"),
+          .sheetTitle = i18n::tr("settings.entities.monitor-override.new-title"),
           .populateSheetBody = std::move(populate),
           .scale = scale,
       }
